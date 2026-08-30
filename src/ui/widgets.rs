@@ -5,8 +5,8 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Mode};
 use crate::matcher::merged_ranges;
-use crate::theme::*;
-use crate::view::View;
+use crate::ui::theme::*;
+use crate::ui::view::View;
 
 pub fn sidebar_width(app: &App) -> u16 {
     let label = app

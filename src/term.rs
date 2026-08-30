@@ -14,7 +14,7 @@ use ratatui::{
 
 use crate::app::{Action, App, Mode};
 use crate::ui::draw;
-use crate::view::View;
+use crate::ui::view::View;
 
 pub fn inherited_tty(readable: bool) -> Option<i32> {
     for fd in [libc::STDERR_FILENO, libc::STDOUT_FILENO, libc::STDIN_FILENO] {

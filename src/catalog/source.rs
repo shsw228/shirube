@@ -4,8 +4,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::catalog::exec::run_command;
 use crate::config::{expand_home, Config};
-use crate::exec::run_command;
 use crate::model::{split_tail, Entry};
 
 /// ディレクトリを走査する。DirEntry::file_type() はリンクを辿らないので、

@@ -1,8 +1,10 @@
 use unicode_width::UnicodeWidthStr;
 
+pub mod keys;
+
 use crate::matcher::find_all;
 use crate::model::Entry;
-use crate::view::View;
+use crate::ui::view::View;
 
 #[derive(PartialEq)]
 pub enum Mode {

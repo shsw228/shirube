@@ -1,7 +1,7 @@
 use ratatui::crossterm::event::{KeyCode, MouseButton, MouseEventKind};
 
 use crate::app::{Action, App, Focus, Mode};
-use crate::view::View;
+use crate::ui::view::View;
 
 impl App {
     pub fn take_count(&mut self) -> usize {
@@ -205,7 +205,7 @@ impl App {
 mod tests {
     use super::*;
     use crate::model::{split_tail, Entry};
-    use crate::view::View;
+    use crate::ui::view::View;
 
     fn entry(group: usize, path: &str) -> Entry {
         let (owner, repo) = split_tail(path);

@@ -1,11 +1,15 @@
+pub mod theme;
+pub mod view;
+pub mod widgets;
+
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Focus};
-use crate::theme::*;
-use crate::view::View;
-use crate::widgets::*;
+use crate::ui::theme::*;
+use crate::ui::view::View;
+use crate::ui::widgets::*;
 
 pub struct Panes {
     pub sidebar: Option<Rect>,

@@ -2,18 +2,12 @@
 // 画面は端末に直接描くので、シェル側は `cd "$(shirube)"` で結果だけ受け取れる。
 
 mod app;
+mod catalog;
 mod config;
-mod exec;
-mod history;
-mod keys;
 mod matcher;
 mod model;
-mod source;
 mod term;
-mod theme;
 mod ui;
-mod view;
-mod widgets;
 
 use std::{
     env,
@@ -23,9 +17,9 @@ use std::{
 use ratatui::crossterm::terminal::disable_raw_mode;
 
 use crate::app::App;
+use crate::catalog::history::{record_choice, sort_by_rank};
+use crate::catalog::source::{collect, read_piped_stdin};
 use crate::config::load_config;
-use crate::history::{record_choice, sort_by_rank};
-use crate::source::{collect, read_piped_stdin};
 use crate::term::run;
 
 const HELP: &str = "\

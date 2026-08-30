@@ -1,7 +1,7 @@
 use std::{collections::HashMap, env, fs, path::PathBuf, process::Command};
 
+use crate::catalog::exec::run_command;
 use crate::config::History;
-use crate::exec::run_command;
 use crate::model::Entry;
 
 pub fn state_dir() -> PathBuf {
