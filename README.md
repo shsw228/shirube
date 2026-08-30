@@ -59,7 +59,7 @@ Prebuilt binaries are published for `aarch64-apple-darwin`,
 
 ### From source
 
-Requires Rust 1.85 or later (the minimum supported version, checked in CI).
+Requires Rust 1.88 or later (the minimum supported version, checked in CI).
 
 ```sh
 cargo install --git https://github.com/shsw228/shirube

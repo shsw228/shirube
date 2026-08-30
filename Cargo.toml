@@ -2,7 +2,7 @@
 name = "shirube"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "A terminal directory jumper that keeps your directories in named groups"
 repository = "https://github.com/shsw228/shirube"
 license = "MIT"

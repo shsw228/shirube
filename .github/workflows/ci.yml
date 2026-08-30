@@ -37,5 +37,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           # Cargo.toml の rust-version と揃える。
-          toolchain: "1.85"
+          toolchain: "1.88"
       - run: cargo check --all --locked
