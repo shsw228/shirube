@@ -299,3 +299,4 @@ CI runs the same three on macOS and Linux.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
