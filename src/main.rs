@@ -1,11 +1,5 @@
 // 設定したソースからディレクトリを集め、選んだパスを stdout に吐く TUI。
 // 画面は端末に直接描くので、シェル側は `cd "$(shirube)"` で結果だけ受け取れる。
-//
-// グループは一覧に混ぜた見出し行ではなく、独立したサイドバーとして持つ。
-// 絞り込んでもサイドバーからグループが消えないので、どこに何件残っているかを
-// 見失わない。ペインは端末幅に応じて出し入れする。
-//
-// 操作は vim 風の 2 モード。通常モードは hjkl と Tab で動き、検索は / で始める。
 
 use std::{
     collections::{HashMap, HashSet},
@@ -33,8 +27,8 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-// 色は端末の 16 色から取る。256 色の固定値を並べると利用者のテーマとぶつかり、
-// 明るい背景の端末では暗いグレーがほとんど読めなくなる。Reset は端末の既定色。
+// 端末の 16 色から取る。256 色の固定値は利用者のテーマとぶつかり、明るい背景では
+// 暗いグレーが読めなくなる。Reset は端末の既定色。
 const C_TEXT: Color = Color::Reset;
 const C_MUTED: Color = Color::DarkGray;
 const C_KEY: Color = Color::Blue;
@@ -42,8 +36,7 @@ const C_HIT: Color = Color::Yellow;
 const C_SEL_BG: Color = Color::Blue;
 const C_SEL_FG: Color = Color::White;
 
-/// 選択行は前景と背景をまとめて塗り替える。個々の色をそのまま残すと、
-/// 背景の上で沈む文字が出てしまう。
+/// 前景と背景をまとめて塗り替える。個々の色を残すと背景に沈む文字が出る。
 fn selected_style() -> Style {
     Style::new()
         .bg(C_SEL_BG)
@@ -51,7 +44,7 @@ fn selected_style() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-/// カーソル印。選択行では前景色を指定し直さないと、青地に青文字で沈む。
+/// 選択行では前景色を指定し直さないと、青地に青文字で沈む。
 fn marker_style(selected: bool) -> Style {
     if selected {
         selected_style()
@@ -60,7 +53,7 @@ fn marker_style(selected: bool) -> Style {
     }
 }
 
-/// 一致箇所は色に加えて下線も引く。色数の少ない端末や、選択行の上でも見つかる。
+/// 色に加えて下線も引く。単色端末や選択行の上でも見つかるように。
 fn hit_style(selected: bool) -> Style {
     let base = if selected {
         Style::new().bg(C_SEL_BG)
@@ -92,8 +85,6 @@ fn split_tail(path: &str) -> (String, String) {
     (owner, repo)
 }
 
-/// 監視対象は設定ファイルから与える。ここを外に出しておかないと、
-/// ghq のような特定のツールに縛られた道具にしかならない。
 #[derive(Debug, Deserialize)]
 struct Config {
     #[serde(default)]
@@ -102,12 +93,8 @@ struct Config {
     history: History,
 }
 
-/// 選んだ先を覚える方法。既定は自前の小さな台帳だが、コマンドを書けば
-/// zoxide のような既存の仕組みに丸ごと委ねられる。cd の記録先を
-/// 一本化したい人が大半なので、抱え込まずに逃がせる形にしておく。
 #[derive(Debug, Deserialize)]
 struct History {
-    /// false にすると記録も並べ替えもしない。
     #[serde(default = "yes")]
     enabled: bool,
     /// 選択時に走らせるコマンド。{} が選んだパスに置き換わり、
@@ -135,11 +122,9 @@ impl Default for History {
 
 #[derive(Debug, Deserialize)]
 struct SourceSpec {
-    /// 見出しに出る名前。
     label: String,
     /// パスを 1 行 1 件で吐くコマンド。
     command: Option<Vec<String>>,
-    /// 走査するディレクトリ。
     path: Option<String>,
     /// path から数える階層数。root 自身は含めない。
     #[serde(default = "default_depth")]
@@ -151,7 +136,6 @@ fn default_depth() -> usize {
 }
 
 impl Default for Config {
-    /// 設定が無いときは ghq だけを見る。
     fn default() -> Self {
         Config {
             source: vec![SourceSpec {
@@ -231,7 +215,6 @@ fn walk(
             continue;
         }
         let path = ent.path();
-        // metadata はリンクを辿る。壊れたリンクはここで落ちる。
         if !fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false) {
             continue;
         }
@@ -245,8 +228,7 @@ fn walk(
     }
 }
 
-/// パイプで渡されたパスを読む。tty のときは何もしない。
-/// 端末を掴み直す前に呼ぶ必要がある。
+/// パイプで渡されたパスを読む。端末を掴み直す前に呼ぶ必要がある。
 fn read_piped_stdin() -> Vec<String> {
     if unsafe { libc::isatty(libc::STDIN_FILENO) } == 1 {
         return Vec::new();
@@ -276,7 +258,6 @@ fn history_path() -> PathBuf {
     state_dir().join("shirube/history")
 }
 
-/// 自前の台帳の 1 行。"回数<TAB>最終選択の epoch 秒<TAB>パス"。
 struct Visit {
     count: u32,
     last: u64,
@@ -290,7 +271,7 @@ fn now() -> u64 {
         .unwrap_or(0)
 }
 
-/// zoxide と同じ考え方で、新しいものほど重く見る。
+/// 重み付けは zoxide に倣う。
 fn frecency(v: &Visit, now: u64) -> f64 {
     let age = now.saturating_sub(v.last);
     let weight = match age {
@@ -317,7 +298,6 @@ fn read_visits() -> Vec<Visit> {
         .collect()
 }
 
-/// 台帳が無制限に伸びないよう、点数の低いものから捨てる。
 const HISTORY_LIMIT: usize = 2000;
 
 fn write_visits(mut visits: Vec<Visit>) {
@@ -341,7 +321,7 @@ fn write_visits(mut visits: Vec<Visit>) {
     let _ = fs::write(path, body);
 }
 
-/// 優先度の高い順に並んだパス。添字がそのまま順位になる。
+/// パスから順位への表。値が小さいほど優先。
 fn ranked_paths(history: &History) -> HashMap<String, usize> {
     if !history.enabled {
         return HashMap::new();
@@ -366,7 +346,6 @@ fn ranked_paths(history: &History) -> HashMap<String, usize> {
         .collect()
 }
 
-/// 選んだ先を記録する。委譲先が指定されていればそちらに渡すだけ。
 fn record_choice(history: &History, path: &str) {
     if !history.enabled {
         return;
@@ -383,6 +362,12 @@ fn record_choice(history: &History, path: &str) {
                 .stderr(std::process::Stdio::null())
                 .status();
         }
+        return;
+    }
+
+    // 自前の台帳は自前ランカーに食わせるためだけに在る。並び順を外へ委ねているなら
+    // 誰も読まないので書かない。書くと zoxide 側と二重に記録することにもなる。
+    if history.rank.is_some() {
         return;
     }
 
@@ -443,7 +428,6 @@ fn collect(config: &Config, piped: Vec<String>) -> (Vec<String>, Vec<Entry>) {
             (None, None) => Vec::new(),
         };
         paths.dedup();
-        // 順位が分かっているものを前に出す。知らないものは元の並びのまま後ろへ。
         if !ranks.is_empty() {
             paths.sort_by_key(|p| ranks.get(p).copied().unwrap_or(usize::MAX));
         }
@@ -455,8 +439,7 @@ fn collect(config: &Config, piped: Vec<String>) -> (Vec<String>, Vec<Entry>) {
 
 // ------------------------------------------------------------------ マッチ
 
-/// 部分文字列の出現位置をバイト範囲で返す。char 境界で走査するので日本語でも壊れない。
-/// ci が真なら大文字小文字を無視する。
+/// 出現位置をバイト範囲で返す。char 境界で走査するので日本語でも壊れない。
 fn find_all(hay: &str, needle: &str, ci: bool) -> Vec<(usize, usize)> {
     if needle.is_empty() {
         return Vec::new();
@@ -526,7 +509,6 @@ enum Mode {
     Search,
 }
 
-/// キーを処理した結果、呼び出し側にやってほしいこと。
 #[derive(PartialEq, Debug)]
 enum Action {
     None,
@@ -534,7 +516,6 @@ enum Action {
     Choose,
 }
 
-/// キー入力を受け取っているペイン。
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Focus {
     Groups,
@@ -549,12 +530,8 @@ struct App {
     ci: bool,
     mode: Mode,
     focus: Focus,
-    /// 0 は全グループ、1 以降は groups[scope - 1]。
     scope: usize,
-    /// グループごとの一致件数。絞り込んでもサイドバーからは消さないので、
-    /// どのグループに何件残っているかが常に見える。
     counts: Vec<usize>,
-    /// いま一覧に出している entries の添字。
     visible: Vec<usize>,
     cursor: usize,
     offset: usize,
@@ -562,12 +539,9 @@ struct App {
     group_offset: usize,
     owner_width: usize,
     tag_width: usize,
-    /// vim 風の未確定入力。数値プレフィックスと g / z の待ち。
     count: Option<usize>,
     operator: Option<char>,
-    /// 直近に描いた一覧の行数。ページ移動や H/M/L に要る。
     view_height: usize,
-    /// 直近に描いたペインの内側。マウスの当たり判定に使う。
     list_rect: Rect,
     sidebar_rect: Option<Rect>,
 }
@@ -650,7 +624,6 @@ impl App {
         self.counts.iter().sum()
     }
 
-    /// サイドバーの行数。先頭が All。
     fn group_rows(&self) -> usize {
         self.groups.len() + 1
     }
@@ -663,7 +636,6 @@ impl App {
         self.rebuild(true);
     }
 
-    /// フォーカス中のペインの行数。
     fn len_focused(&self) -> usize {
         match self.focus {
             Focus::List => self.visible.len(),
@@ -678,7 +650,6 @@ impl App {
         }
     }
 
-    /// フォーカス中のペインのカーソルを動かす。範囲外は端で止める。
     fn goto(&mut self, index: isize) {
         let len = self.len_focused();
         if len == 0 {
@@ -711,7 +682,6 @@ impl App {
         self.goto(if to_end { last } else { 0 });
     }
 
-    /// 画面内の上端 / 中央 / 下端へ。vim の H / M / L。
     fn jump_screen(&mut self, where_to: char) {
         if self.focus != Focus::List || self.visible.is_empty() {
             return;
@@ -725,7 +695,6 @@ impl App {
         };
     }
 
-    /// カーソル行を画面のどこに置くか。vim の zz / zt / zb。
     fn scroll_cursor_to(&mut self, where_to: char) {
         if self.focus != Focus::List {
             return;
@@ -738,7 +707,6 @@ impl App {
         };
     }
 
-    /// カーソルを動かさず表示だけずらす。vim の Ctrl-e / Ctrl-y。
     fn scroll_view(&mut self, delta: isize) {
         if self.focus != Focus::List || self.visible.is_empty() {
             return;
@@ -749,7 +717,6 @@ impl App {
         self.cursor = self.cursor.clamp(self.offset, bottom.min(last));
     }
 
-    /// グループの切れ目へ飛ぶ。vim の { / } に相当する。
     fn jump_group_edge(&mut self, forward: bool) {
         if self.focus != Focus::List || self.visible.is_empty() {
             return;
@@ -810,15 +777,12 @@ impl App {
         };
     }
 
-    /// 通常モードのキー。vim に寄せて、数値プレフィックスと g / z の 2 打鍵を持つ。
     fn on_normal_key(&mut self, code: KeyCode, ctrl: bool) -> Action {
-        // 打ちかけの数値や g / z は Esc で取り消す。ここで終了させない。
         if code == KeyCode::Esc && (self.count.is_some() || self.operator.is_some()) {
             self.clear_pending();
             return Action::None;
         }
 
-        // g や z を待っている最中は、次の 1 打鍵で確定させる。
         if let Some(op) = self.operator.take() {
             let count = self.count.take();
             match (op, code) {
@@ -867,8 +831,6 @@ impl App {
                 self.rebuild(true);
             }
             KeyCode::Enter => match self.focus {
-                // サイドバーからの Enter は「このグループを見る」意思なので、
-                // いきなり移動せず一覧へ focus を渡す。
                 Focus::Groups => self.focus = Focus::List,
                 Focus::List => return Action::Choose,
             },
@@ -879,7 +841,6 @@ impl App {
             KeyCode::Char('n') if ctrl => self.step(count as isize),
             KeyCode::Char('p') if ctrl => self.step(-(count as isize)),
 
-            // vim と同じで、5G は 5 行目、素の G は末尾。
             KeyCode::Char('G') if counted => self.goto(count as isize - 1),
             KeyCode::Char('G') | KeyCode::End => self.jump(true),
             KeyCode::Home => self.jump(false),
@@ -906,8 +867,6 @@ impl App {
         Action::None
     }
 
-    /// マウス。ホイールは今のペインをスクロールし、クリックはその行を選ぶ。
-    /// 既に選んでいる行をもう一度クリックしたら、それは決定と見なす。
     fn on_mouse(&mut self, kind: MouseEventKind, col: u16, row: u16) -> Action {
         let in_rect =
             |r: Rect| col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height;
@@ -955,7 +914,6 @@ impl App {
         Action::None
     }
 
-    /// 検索モードのキー。入力そのものが目的なので、モーションは矢印と Ctrl だけ。
     fn on_search_key(&mut self, code: KeyCode, ctrl: bool) -> Action {
         match code {
             KeyCode::Enter => self.mode = Mode::Normal,
@@ -997,7 +955,6 @@ impl App {
 
 // ------------------------------------------------------------------ 描画
 
-/// 端末幅で見せる情報量を変える。狭いときはサイドバーとプレビューから落とす。
 struct Panes {
     sidebar: Option<Rect>,
     list: Rect,
@@ -1060,7 +1017,6 @@ fn sidebar_lines(app: &mut App, inner: Rect) -> Vec<Line<'static>> {
     let width = inner.width as usize;
     let height = (inner.height as usize).max(1);
 
-    // ソースをたくさん並べると縦に収まらない。一覧と同じように追従させる。
     if app.group_cursor < app.group_offset {
         app.group_offset = app.group_cursor;
     }
@@ -1130,7 +1086,6 @@ fn entry_line(app: &App, idx: usize, selected: bool) -> Line<'static> {
         marker_style(selected),
     )];
 
-    // 全グループを混ぜて出しているときだけ、どこの所属かを添える。
     if app.scope == 0 && app.groups.len() > 1 {
         let tag = &app.groups[e.group];
         let pad = " ".repeat(app.tag_width.saturating_sub(tag.width()));
@@ -1214,8 +1169,6 @@ fn shorten_home(path: &str) -> String {
     }
 }
 
-/// 打ちかけの数値や g / z。vim が右下に出しているのと同じ役目で、
-/// 2 打鍵目を待っていることが分かるようにする。
 fn pending_text(app: &App) -> String {
     let mut out = String::new();
     if let Some(n) = app.count {
@@ -1259,8 +1212,6 @@ fn status_line(app: &App) -> Line<'static> {
     }
 }
 
-/// 末尾の 1 階層だけ強調する。一覧のどこに居るかは上で分かるので、
-/// ここで見たいのは「いま何を選んでいるか」。
 fn path_line(path: &str) -> Line<'static> {
     let shown = shorten_home(path);
     match shown.rfind('/') {
@@ -1366,7 +1317,6 @@ fn draw(f: &mut Frame, app: &mut App) {
 
 // -------------------------------------------------------------------- 本体
 
-/// 読み書きできる端末として継承済みの fd を探す。
 fn inherited_tty(readable: bool) -> Option<i32> {
     for fd in [libc::STDERR_FILENO, libc::STDOUT_FILENO, libc::STDIN_FILENO] {
         if unsafe { libc::isatty(fd) } != 1 {
@@ -1525,7 +1475,6 @@ fn main() {
                 eprintln!("shirube: unknown argument: {other}");
                 std::process::exit(2);
             }
-            // 素の引数は初期クエリ。`shirube foo` で絞った状態から始められる。
             other => query = other.to_string(),
         }
     }
@@ -1538,7 +1487,6 @@ fn main() {
         }
     };
 
-    // 端末を掴み直す前に読む。あとでは stdin が tty に差し替わっている。
     let piped = read_piped_stdin();
 
     let (groups, entries) = collect(&config, piped);
@@ -1624,7 +1572,6 @@ mod tests {
         assert_eq!(&"marutope/受注A"[s..e], "受注");
     }
 
-    /// fzf のファジー一致で shsw228 の w を拾ってしまっていた件の回帰確認。
     #[test]
     fn 散らばった文字ではマッチしない() {
         let mut a = app();
@@ -1641,8 +1588,6 @@ mod tests {
         assert_eq!(shown(&a), vec!["受注A"]);
     }
 
-    /// 絞り込んでもサイドバーからグループは消えない。件数が 0 になるだけ。
-    /// 一致しないグループごと消えると、いまどこを見ているのか分からなくなる。
     #[test]
     fn 絞り込んでも全グループが件数付きで残る() {
         let mut a = app();
@@ -1928,8 +1873,6 @@ mod tests {
         assert!(entries.iter().all(|e| e.group == 0));
     }
 
-    /// DirEntry::file_type() はリンクを辿らないため、素直に書くと
-    /// シンボリックリンクのディレクトリを丸ごと落としてしまう。
     #[test]
     fn シンボリックリンクのディレクトリも拾う() {
         let base = std::env::temp_dir().join(format!("shirube-sym-{}", std::process::id()));
@@ -1956,7 +1899,6 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
-    /// 自分より上を指すリンクがあると、素朴な再帰は無限に潜る。
     #[test]
     fn リンクの循環で止まらない() {
         let base = std::env::temp_dir().join(format!("shirube-loop-{}", std::process::id()));
@@ -1973,7 +1915,6 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
-    /// 履歴は既定で自前の台帳を使うが、コマンドを書けば zoxide に丸ごと委ねられる。
     #[test]
     fn 履歴はzoxideなどに委譲できる() {
         let c: Config = toml::from_str(
@@ -1996,8 +1937,6 @@ mod tests {
         );
     }
 
-    /// record は argv をそのまま実行するだけで、特定のツールを前提にしない。
-    /// 空白入りのパスでも、直接 argv に置く形なら割れない。
     #[test]
     fn recordは任意のコマンドを実行できる() {
         let out = std::env::temp_dir().join(format!("shirube-rec-{}", std::process::id()));
@@ -2020,7 +1959,6 @@ mod tests {
         let _ = fs::remove_file(&out);
     }
 
-    /// シェルを挟む書き方でも、環境変数経由なら空白で割れない。
     #[test]
     fn recordは環境変数でもパスを渡す() {
         let out = std::env::temp_dir().join(format!("shirube-env-{}", std::process::id()));
@@ -2042,6 +1980,32 @@ mod tests {
     }
 
     #[test]
+    fn rankを委譲したら自前の台帳は書かない() {
+        let dir = std::env::temp_dir().join(format!("shirube-state-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        unsafe { std::env::set_var("XDG_STATE_HOME", &dir) };
+
+        let delegated = History {
+            enabled: true,
+            record: None,
+            rank: Some(vec!["true".into()]),
+        };
+        record_choice(&delegated, "/tmp/x");
+        assert!(!history_path().exists(), "委譲時に台帳を書いている");
+
+        let builtin = History {
+            enabled: true,
+            record: None,
+            rank: None,
+        };
+        record_choice(&builtin, "/tmp/x");
+        assert!(history_path().exists(), "既定では台帳を書く");
+
+        unsafe { std::env::remove_var("XDG_STATE_HOME") };
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn 履歴の設定が無ければ自前の台帳を使う() {
         let c = Config::default();
         assert!(c.history.enabled);
@@ -2049,7 +2013,6 @@ mod tests {
         assert!(c.history.rank.is_none());
     }
 
-    /// 順位を返すコマンドを指定すると、その並びがグループ内の並びになる。
     #[test]
     fn 順位コマンドの並びが一覧に反映される() {
         let c: Config = toml::from_str(
@@ -2180,13 +2143,10 @@ mod render_tests {
             .join("\n")
     }
 
-    /// 前景と背景が同じセルは、そこに何が書いてあっても読めない。
-    /// カーソル印を青地に青で描いていたのを、SGR を数えてやっと見つけた反省。
     fn assert_no_invisible_cells(buf: &Buffer) {
         for y in 0..buf.area.height {
             for x in 0..buf.area.width {
                 let cell = &buf[(x, y)];
-                // 双方 Reset は端末の既定色どうしなので、定義上読める。
                 if cell.symbol().trim().is_empty() || cell.fg == Color::Reset {
                     continue;
                 }
@@ -2214,7 +2174,6 @@ mod render_tests {
         a.rebuild(true);
         assert_no_invisible_cells(&render(&mut a, 110, 14));
 
-        // 狭い端末でも同じ
         assert_no_invisible_cells(&render(&mut a, 50, 10));
     }
 
@@ -2223,7 +2182,6 @@ mod render_tests {
         let mut a = sample();
         let buf = render(&mut a, 110, 14);
 
-        // 一覧の 1 行目 (枠の内側) が選択行
         let cell = &buf[(15, 1)];
         assert_eq!(cell.bg, C_SEL_BG, "選択行に背景色が乗っていない");
 
@@ -2272,7 +2230,6 @@ mod render_tests {
         assert!(out.contains("All"));
     }
 
-    /// ソースが縦に収まらないと、下のグループへ到達できなくなっていた。
     #[test]
     fn サイドバーは縦に収まらないとスクロールする() {
         let groups: Vec<&str> = vec!["g0", "g1", "g2", "g3", "g4", "g5", "g6", "g7"];
