@@ -234,7 +234,7 @@ mod tests {
         let a = App::new(vec!["ghq".into(), "work".into()], entries);
         let view = View {
             height: 10,
-            ..View::new()
+            ..View::default()
         };
         (a, view)
     }

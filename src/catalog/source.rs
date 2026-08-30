@@ -5,6 +5,8 @@ use std::{
 };
 
 use crate::catalog::exec::run_command;
+use std::collections::HashMap;
+
 use crate::config::{expand_home, Config};
 use crate::model::{split_tail, Entry};
 
@@ -57,7 +59,11 @@ pub fn read_piped_stdin() -> Vec<String> {
         .collect()
 }
 
-pub fn collect(config: &Config, piped: Vec<String>) -> (Vec<String>, Vec<Entry>) {
+pub fn collect(
+    config: &Config,
+    piped: Vec<String>,
+    ranks: &HashMap<String, usize>,
+) -> (Vec<String>, Vec<Entry>) {
     let mut groups: Vec<String> = Vec::new();
     let mut entries = Vec::new();
 
@@ -79,6 +85,7 @@ pub fn collect(config: &Config, piped: Vec<String>) -> (Vec<String>, Vec<Entry>)
             }
         };
 
+    // パイプ入力は渡された順が意味を持つので、並べ替えの対象にしない。
     add(&mut groups, &mut entries, "stdin", piped);
 
     for spec in &config.source {
@@ -98,6 +105,9 @@ pub fn collect(config: &Config, piped: Vec<String>) -> (Vec<String>, Vec<Entry>)
             (None, None) => Vec::new(),
         };
         paths.dedup();
+        if !ranks.is_empty() {
+            paths.sort_by_key(|p| ranks.get(p).copied().unwrap_or(usize::MAX));
+        }
         add(&mut groups, &mut entries, &spec.label, paths);
     }
 
@@ -120,7 +130,7 @@ mod tests {
             "#,
         )
         .unwrap();
-        let (groups, entries) = collect(&c, Vec::new());
+        let (groups, entries) = collect(&c, Vec::new(), &HashMap::new());
         assert_eq!(groups, ["fixed"]);
         assert_eq!(
             entries.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
@@ -137,10 +147,75 @@ mod tests {
                 ..Default::default()
             },
         };
-        let (groups, entries) = collect(&c, vec!["/tmp/x".into(), "/tmp/y".into()]);
+        let (groups, entries) =
+            collect(&c, vec!["/tmp/x".into(), "/tmp/y".into()], &HashMap::new());
         assert_eq!(groups, ["stdin"]);
         assert_eq!(entries.len(), 2);
         assert!(entries.iter().all(|e| e.group == 0));
+    }
+
+    fn ranks(paths: &[&str]) -> HashMap<String, usize> {
+        paths
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (p.to_string(), i))
+            .collect()
+    }
+
+    #[test]
+    fn 設定ソースは順位に従って並ぶ() {
+        let c: Config = toml::from_str(
+            r#"
+            [[source]]
+            label = "s"
+            command = ["printf", "/tmp/a\n/tmp/b\n/tmp/c\n"]
+            "#,
+        )
+        .unwrap();
+        let (_, entries) = collect(&c, Vec::new(), &ranks(&["/tmp/c", "/tmp/a"]));
+        assert_eq!(
+            entries.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
+            ["/tmp/c", "/tmp/a", "/tmp/b"],
+            "順位付きが前、知らないものは元の並びで後ろ"
+        );
+    }
+
+    /// パイプで渡した順序は意味を持つので、順位で並べ替えてはいけない。
+    #[test]
+    fn パイプ入力は順位で並べ替えない() {
+        let c = Config {
+            source: Vec::new(),
+            history: History::default(),
+        };
+        let piped = vec!["/tmp/a".to_string(), "/tmp/b".into(), "/tmp/c".into()];
+        let (_, entries) = collect(&c, piped, &ranks(&["/tmp/c", "/tmp/b"]));
+        assert_eq!(
+            entries.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
+            ["/tmp/a", "/tmp/b", "/tmp/c"],
+            "渡された順のまま"
+        );
+    }
+
+    #[test]
+    fn グループの並びは順位で崩れない() {
+        let c: Config = toml::from_str(
+            r#"
+            [[source]]
+            label = "first"
+            command = ["printf", "/g0/a\n/g0/b\n"]
+
+            [[source]]
+            label = "second"
+            command = ["printf", "/g1/c\n"]
+            "#,
+        )
+        .unwrap();
+        let (groups, entries) = collect(&c, Vec::new(), &ranks(&["/g1/c", "/g0/b"]));
+        assert_eq!(groups, ["first", "second"]);
+        assert_eq!(
+            entries.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
+            ["/g0/b", "/g0/a", "/g1/c"]
+        );
     }
 
     #[test]
@@ -153,7 +228,7 @@ mod tests {
             "#,
         )
         .unwrap();
-        let (groups, entries) = collect(&c, Vec::new());
+        let (groups, entries) = collect(&c, Vec::new(), &HashMap::new());
         assert!(groups.is_empty());
         assert!(entries.is_empty());
     }

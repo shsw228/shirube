@@ -68,7 +68,7 @@ pub fn run(app: &mut App) -> io::Result<Option<String>> {
     execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
     let mut term = Terminal::new(CrosstermBackend::new(out))?;
 
-    let mut view = View::new();
+    let mut view = View::default();
     let result = loop {
         term.draw(|f| draw(f, app, &mut view))?;
 

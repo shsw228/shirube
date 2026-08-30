@@ -178,7 +178,8 @@ impl App {
         if self.focus != Focus::List || self.visible.is_empty() {
             return;
         }
-        let last = (view.offset + view.height.saturating_sub(1)).min(self.visible.len() - 1);
+        let h = view.height.max(1);
+        let last = (view.offset + h - 1).min(self.visible.len() - 1);
         self.cursor = match where_to {
             'H' => view.offset,
             'L' => last,

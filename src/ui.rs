@@ -169,7 +169,7 @@ mod tests {
     }
 
     fn render(app: &App, w: u16, h: u16) -> Buffer {
-        let mut view = View::new();
+        let mut view = View::default();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| draw(f, app, &mut view)).unwrap();
         term.backend().buffer().clone()

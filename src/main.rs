@@ -17,7 +17,7 @@ use std::{
 use ratatui::crossterm::terminal::disable_raw_mode;
 
 use crate::app::App;
-use crate::catalog::history::{record_choice, sort_by_rank};
+use crate::catalog::history::{history_path, ranked_paths, record_choice};
 use crate::catalog::source::{collect, read_piped_stdin};
 use crate::config::load_config;
 use crate::term::run;
@@ -96,8 +96,9 @@ fn main() {
 
     let piped = read_piped_stdin();
 
-    let (groups, mut entries) = collect(&config, piped);
-    sort_by_rank(&config.history, &mut entries);
+    let ledger = history_path();
+    let ranks = ranked_paths(&config.history, &ledger);
+    let (groups, entries) = collect(&config, piped, &ranks);
     if entries.is_empty() {
         eprintln!("shirube: no directories to show");
         std::process::exit(1);
@@ -110,7 +111,7 @@ fn main() {
     }
     match run(&mut app) {
         Ok(Some(path)) => {
-            record_choice(&config.history, &path);
+            record_choice(&config.history, &ledger, &path);
             let mut stdout = io::stdout();
             let _ = writeln!(stdout, "{path}");
         }

@@ -1,8 +1,12 @@
-use std::{collections::HashMap, env, fs, path::PathBuf, process::Command};
+use std::{
+    collections::HashMap,
+    env, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use crate::catalog::exec::run_command;
 use crate::config::History;
-use crate::model::Entry;
 
 pub fn state_dir() -> PathBuf {
     if let Ok(x) = env::var("XDG_STATE_HOME") {
@@ -42,8 +46,8 @@ pub fn frecency(v: &Visit, now: u64) -> f64 {
     v.count as f64 * weight
 }
 
-pub fn read_visits() -> Vec<Visit> {
-    let Ok(text) = fs::read_to_string(history_path()) else {
+pub fn read_visits(ledger: &Path) -> Vec<Visit> {
+    let Ok(text) = fs::read_to_string(ledger) else {
         return Vec::new();
     };
     text.lines()
@@ -59,7 +63,7 @@ pub fn read_visits() -> Vec<Visit> {
 
 pub const HISTORY_LIMIT: usize = 2000;
 
-pub fn write_visits(mut visits: Vec<Visit>) {
+pub fn write_visits(ledger: &Path, mut visits: Vec<Visit>) {
     if visits.len() > HISTORY_LIMIT {
         let t = now();
         visits.sort_by(|a, b| {
@@ -73,22 +77,21 @@ pub fn write_visits(mut visits: Vec<Visit>) {
         .iter()
         .map(|v| format!("{}\t{}\t{}\n", v.count, v.last, v.path))
         .collect();
-    let path = history_path();
-    if let Some(dir) = path.parent() {
+    if let Some(dir) = ledger.parent() {
         let _ = fs::create_dir_all(dir);
     }
-    let _ = fs::write(path, body);
+    let _ = fs::write(ledger, body);
 }
 
 /// パスから順位への表。値が小さいほど優先。
-pub fn ranked_paths(history: &History) -> HashMap<String, usize> {
+pub fn ranked_paths(history: &History, ledger: &Path) -> HashMap<String, usize> {
     if !history.enabled {
         return HashMap::new();
     }
     let ordered: Vec<String> = match &history.rank {
         Some(cmd) => run_command(cmd),
         None => {
-            let mut visits = read_visits();
+            let mut visits = read_visits(ledger);
             let t = now();
             visits.sort_by(|a, b| {
                 frecency(b, t)
@@ -105,16 +108,7 @@ pub fn ranked_paths(history: &History) -> HashMap<String, usize> {
         .collect()
 }
 
-/// グループの並びは保ったまま、グループ内だけを順位で並べ替える。
-pub fn sort_by_rank(history: &History, entries: &mut [Entry]) {
-    let ranks = ranked_paths(history);
-    if ranks.is_empty() {
-        return;
-    }
-    entries.sort_by_key(|e| (e.group, ranks.get(&e.path).copied().unwrap_or(usize::MAX)));
-}
-
-pub fn record_choice(history: &History, path: &str) {
+pub fn record_choice(history: &History, ledger: &Path, path: &str) {
     if !history.enabled {
         return;
     }
@@ -139,7 +133,7 @@ pub fn record_choice(history: &History, path: &str) {
         return;
     }
 
-    let mut visits = read_visits();
+    let mut visits = read_visits(ledger);
     match visits.iter_mut().find(|v| v.path == path) {
         Some(v) => {
             v.count += 1;
@@ -151,69 +145,20 @@ pub fn record_choice(history: &History, path: &str) {
             path: path.to_string(),
         }),
     }
-    write_visits(visits);
+    write_visits(ledger, visits);
 }
 
 #[cfg(test)]
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
-    use crate::model::split_tail;
 
-    fn entries(paths: &[&str]) -> Vec<Entry> {
-        paths
-            .iter()
-            .map(|p| {
-                let (owner, repo) = split_tail(p);
-                Entry {
-                    path: p.to_string(),
-                    group: 0,
-                    owner,
-                    repo,
-                }
-            })
-            .collect()
-    }
-
-    fn paths(v: &[Entry]) -> Vec<&str> {
-        v.iter().map(|e| e.path.as_str()).collect()
-    }
-
-    #[test]
-    fn 順位コマンドの並びをグループ内に反映する() {
-        let h = History {
-            enabled: true,
-            record: None,
-            rank: Some(vec!["printf".into(), "/tmp/c\n/tmp/a\n".into()]),
-        };
-        let mut v = entries(&["/tmp/a", "/tmp/b", "/tmp/c"]);
-        sort_by_rank(&h, &mut v);
-        assert_eq!(paths(&v), ["/tmp/c", "/tmp/a", "/tmp/b"]);
-    }
-
-    #[test]
-    fn 履歴を切ると並べ替えない() {
-        let h = History {
-            enabled: false,
-            record: None,
-            rank: Some(vec!["printf".into(), "/tmp/c\n".into()]),
-        };
-        let mut v = entries(&["/tmp/a", "/tmp/b", "/tmp/c"]);
-        sort_by_rank(&h, &mut v);
-        assert_eq!(paths(&v), ["/tmp/a", "/tmp/b", "/tmp/c"]);
-    }
-
-    #[test]
-    fn グループの並びは崩さない() {
-        let mut v = entries(&["/g0/a", "/g0/b", "/g1/c"]);
-        v[2].group = 1;
-        let h = History {
-            enabled: true,
-            record: None,
-            rank: Some(vec!["printf".into(), "/g1/c\n/g0/b\n".into()]),
-        };
-        sort_by_rank(&h, &mut v);
-        assert_eq!(paths(&v), ["/g0/b", "/g0/a", "/g1/c"]);
+    /// テストごとに別の場所を使う。環境変数を書き換えると、
+    /// 並列に走る他のテストの getenv と競合する。
+    fn tmp(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("shirube-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        d
     }
 
     #[test]
@@ -252,7 +197,7 @@ mod tests {
             ]),
             rank: None,
         };
-        record_choice(&h, target);
+        record_choice(&h, &tmp("unused").join("x"), target);
         assert_eq!(fs::read_to_string(&out).unwrap(), target);
         let _ = fs::remove_file(&out);
     }
@@ -272,34 +217,52 @@ mod tests {
             ]),
             rank: None,
         };
-        record_choice(&h, target);
+        record_choice(&h, &tmp("unused").join("x"), target);
         assert_eq!(fs::read_to_string(&out).unwrap(), target);
         let _ = fs::remove_file(&out);
     }
 
     #[test]
     fn rankを委譲したら自前の台帳は書かない() {
-        let dir = std::env::temp_dir().join(format!("shirube-state-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        unsafe { std::env::set_var("XDG_STATE_HOME", &dir) };
+        let ledger = tmp("delegate").join("history");
 
         let delegated = History {
             enabled: true,
             record: None,
             rank: Some(vec!["true".into()]),
         };
-        record_choice(&delegated, "/tmp/x");
-        assert!(!history_path().exists(), "委譲時に台帳を書いている");
+        record_choice(&delegated, &ledger, "/tmp/x");
+        assert!(!ledger.exists(), "委譲時に台帳を書いている");
 
         let builtin = History {
             enabled: true,
             record: None,
             rank: None,
         };
-        record_choice(&builtin, "/tmp/x");
-        assert!(history_path().exists(), "既定では台帳を書く");
+        record_choice(&builtin, &ledger, "/tmp/x");
+        assert!(ledger.exists(), "既定では台帳を書く");
 
-        unsafe { std::env::remove_var("XDG_STATE_HOME") };
-        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(ledger.parent().unwrap());
+    }
+
+    #[test]
+    fn 台帳は回数と時刻を積み上げる() {
+        let ledger = tmp("ledger").join("history");
+        let h = History {
+            enabled: true,
+            record: None,
+            rank: None,
+        };
+        record_choice(&h, &ledger, "/tmp/a");
+        record_choice(&h, &ledger, "/tmp/a");
+        record_choice(&h, &ledger, "/tmp/b");
+
+        let visits = read_visits(&ledger);
+        assert_eq!(visits.len(), 2);
+        let a = visits.iter().find(|v| v.path == "/tmp/a").unwrap();
+        assert_eq!(a.count, 2);
+        assert!(a.last > 0);
+
+        let _ = fs::remove_dir_all(ledger.parent().unwrap());
     }
 }

@@ -3,7 +3,6 @@ use ratatui::prelude::Rect;
 /// 画面の状態。スクロール位置とペインの矩形は描画のたびに決まるもので、
 /// 選択やクエリと違って「アプリが何を指しているか」ではない。
 /// ratatui の ListState と同じく、描画時に &mut で渡して更新する。
-#[derive(Default)]
 pub struct View {
     pub offset: usize,
     pub group_offset: usize,
@@ -13,14 +12,20 @@ pub struct View {
     pub sidebar: Option<Rect>,
 }
 
-impl View {
-    pub fn new() -> Self {
+impl Default for View {
+    /// height だけは 0 にしない。ページ移動や H/M/L が高さで割るため。
+    fn default() -> Self {
         View {
+            offset: 0,
+            group_offset: 0,
             height: 1,
-            ..Default::default()
+            list: Rect::default(),
+            sidebar: None,
         }
     }
+}
 
+impl View {
     pub fn reset_scroll(&mut self) {
         self.offset = 0;
     }
