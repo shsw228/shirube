@@ -1,0 +1,24 @@
+[package]
+name = "shirube"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "A terminal directory jumper that keeps your directories in named groups"
+repository = "https://github.com/shsw228/shirube"
+license = "MIT"
+readme = "README.md"
+keywords = ["cli", "tui", "directory", "ghq", "zoxide"]
+categories = ["command-line-utilities"]
+# crates.io には出さない。配布は GitHub Releases と Homebrew tap。
+publish = false
+
+[dependencies]
+libc = "0.2.189"
+ratatui = "0.29"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.4"
+unicode-width = "0.2"
+
+[profile.release]
+opt-level = "s"
+strip = true
