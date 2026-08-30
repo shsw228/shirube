@@ -6,6 +6,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::app::{App, Mode};
 use crate::matcher::merged_ranges;
 use crate::theme::*;
+use crate::view::View;
 
 pub fn sidebar_width(app: &App) -> u16 {
     let label = app
@@ -18,19 +19,19 @@ pub fn sidebar_width(app: &App) -> u16 {
     ((label + 10) as u16).clamp(14, 26)
 }
 
-pub fn sidebar_lines(app: &mut App, inner: Rect) -> Vec<Line<'static>> {
+pub fn sidebar_lines(app: &App, view: &mut View, inner: Rect) -> Vec<Line<'static>> {
     let width = inner.width as usize;
     let height = (inner.height as usize).max(1);
 
-    if app.group_cursor < app.group_offset {
-        app.group_offset = app.group_cursor;
+    if app.group_cursor < view.group_offset {
+        view.group_offset = app.group_cursor;
     }
-    if app.group_cursor >= app.group_offset + height {
-        app.group_offset = app.group_cursor + 1 - height;
+    if app.group_cursor >= view.group_offset + height {
+        view.group_offset = app.group_cursor + 1 - height;
     }
 
     let mut lines = Vec::new();
-    for row in app.group_offset..(app.group_offset + height).min(app.group_rows()) {
+    for row in view.group_offset..(view.group_offset + height).min(app.group_rows()) {
         let (label, count) = if row == 0 {
             ("All".to_string(), app.total())
         } else {

@@ -1,7 +1,8 @@
 use std::{collections::HashMap, env, fs, path::PathBuf, process::Command};
 
 use crate::config::History;
-use crate::source::run_command;
+use crate::exec::run_command;
+use crate::model::Entry;
 
 pub fn state_dir() -> PathBuf {
     if let Ok(x) = env::var("XDG_STATE_HOME") {
@@ -104,6 +105,15 @@ pub fn ranked_paths(history: &History) -> HashMap<String, usize> {
         .collect()
 }
 
+/// グループの並びは保ったまま、グループ内だけを順位で並べ替える。
+pub fn sort_by_rank(history: &History, entries: &mut [Entry]) {
+    let ranks = ranked_paths(history);
+    if ranks.is_empty() {
+        return;
+    }
+    entries.sort_by_key(|e| (e.group, ranks.get(&e.path).copied().unwrap_or(usize::MAX)));
+}
+
 pub fn record_choice(history: &History, path: &str) {
     if !history.enabled {
         return;
@@ -148,6 +158,63 @@ pub fn record_choice(history: &History, path: &str) {
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
+    use crate::model::split_tail;
+
+    fn entries(paths: &[&str]) -> Vec<Entry> {
+        paths
+            .iter()
+            .map(|p| {
+                let (owner, repo) = split_tail(p);
+                Entry {
+                    path: p.to_string(),
+                    group: 0,
+                    owner,
+                    repo,
+                }
+            })
+            .collect()
+    }
+
+    fn paths(v: &[Entry]) -> Vec<&str> {
+        v.iter().map(|e| e.path.as_str()).collect()
+    }
+
+    #[test]
+    fn 順位コマンドの並びをグループ内に反映する() {
+        let h = History {
+            enabled: true,
+            record: None,
+            rank: Some(vec!["printf".into(), "/tmp/c\n/tmp/a\n".into()]),
+        };
+        let mut v = entries(&["/tmp/a", "/tmp/b", "/tmp/c"]);
+        sort_by_rank(&h, &mut v);
+        assert_eq!(paths(&v), ["/tmp/c", "/tmp/a", "/tmp/b"]);
+    }
+
+    #[test]
+    fn 履歴を切ると並べ替えない() {
+        let h = History {
+            enabled: false,
+            record: None,
+            rank: Some(vec!["printf".into(), "/tmp/c\n".into()]),
+        };
+        let mut v = entries(&["/tmp/a", "/tmp/b", "/tmp/c"]);
+        sort_by_rank(&h, &mut v);
+        assert_eq!(paths(&v), ["/tmp/a", "/tmp/b", "/tmp/c"]);
+    }
+
+    #[test]
+    fn グループの並びは崩さない() {
+        let mut v = entries(&["/g0/a", "/g0/b", "/g1/c"]);
+        v[2].group = 1;
+        let h = History {
+            enabled: true,
+            record: None,
+            rank: Some(vec!["printf".into(), "/g1/c\n/g0/b\n".into()]),
+        };
+        sort_by_rank(&h, &mut v);
+        assert_eq!(paths(&v), ["/g0/b", "/g0/a", "/g1/c"]);
+    }
 
     #[test]
     fn frecencyは新しいほど重い() {

@@ -1,8 +1,8 @@
-use ratatui::prelude::Rect;
 use unicode_width::UnicodeWidthStr;
 
 use crate::matcher::find_all;
-use crate::source::Entry;
+use crate::model::Entry;
+use crate::view::View;
 
 #[derive(PartialEq)]
 pub enum Mode {
@@ -35,16 +35,11 @@ pub struct App {
     pub counts: Vec<usize>,
     pub visible: Vec<usize>,
     pub cursor: usize,
-    pub offset: usize,
     pub group_cursor: usize,
-    pub group_offset: usize,
     pub owner_width: usize,
     pub tag_width: usize,
     pub count: Option<usize>,
     pub operator: Option<char>,
-    pub view_height: usize,
-    pub list_rect: Rect,
-    pub sidebar_rect: Option<Rect>,
 }
 
 impl App {
@@ -62,16 +57,11 @@ impl App {
             counts,
             visible: Vec::new(),
             cursor: 0,
-            offset: 0,
             group_cursor: 0,
-            group_offset: 0,
             owner_width: 0,
             tag_width: 0,
             count: None,
             operator: None,
-            view_height: 1,
-            list_rect: Rect::default(),
-            sidebar_rect: None,
         };
         app.rebuild(true);
         app
@@ -116,7 +106,6 @@ impl App {
 
         if reset_cursor {
             self.cursor = 0;
-            self.offset = 0;
         }
         self.cursor = self.cursor.min(self.visible.len().saturating_sub(1));
     }
@@ -183,39 +172,38 @@ impl App {
         self.goto(if to_end { last } else { 0 });
     }
 
-    pub fn jump_screen(&mut self, where_to: char) {
+    pub fn jump_screen(&mut self, view: &View, where_to: char) {
         if self.focus != Focus::List || self.visible.is_empty() {
             return;
         }
-        let last_visible =
-            (self.offset + self.view_height.saturating_sub(1)).min(self.visible.len() - 1);
+        let last = (view.offset + view.height.saturating_sub(1)).min(self.visible.len() - 1);
         self.cursor = match where_to {
-            'H' => self.offset,
-            'L' => last_visible,
-            _ => (self.offset + last_visible) / 2,
+            'H' => view.offset,
+            'L' => last,
+            _ => (view.offset + last) / 2,
         };
     }
 
-    pub fn scroll_cursor_to(&mut self, where_to: char) {
+    pub fn scroll_cursor_to(&self, view: &mut View, where_to: char) {
         if self.focus != Focus::List {
             return;
         }
-        let h = self.view_height.max(1);
-        self.offset = match where_to {
+        let h = view.height.max(1);
+        view.offset = match where_to {
             't' => self.cursor,
             'b' => self.cursor.saturating_sub(h - 1),
             _ => self.cursor.saturating_sub(h / 2),
         };
     }
 
-    pub fn scroll_view(&mut self, delta: isize) {
+    pub fn scroll_view(&mut self, view: &mut View, delta: isize) {
         if self.focus != Focus::List || self.visible.is_empty() {
             return;
         }
         let last = self.visible.len().saturating_sub(1);
-        self.offset = (self.offset as isize + delta).clamp(0, last as isize) as usize;
-        let bottom = self.offset + self.view_height.saturating_sub(1);
-        self.cursor = self.cursor.clamp(self.offset, bottom.min(last));
+        view.offset = (view.offset as isize + delta).clamp(0, last as isize) as usize;
+        let bottom = view.offset + view.height.saturating_sub(1);
+        self.cursor = self.cursor.clamp(view.offset, bottom.min(last));
     }
 
     pub fn jump_group_edge(&mut self, forward: bool) {
@@ -267,7 +255,7 @@ impl App {
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
-    use crate::source::split_tail;
+    use crate::model::split_tail;
 
     fn entry(group: usize, path: &str) -> Entry {
         let (owner, repo) = split_tail(path);

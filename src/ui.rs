@@ -4,6 +4,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Focus};
 use crate::theme::*;
+use crate::view::View;
 use crate::widgets::*;
 
 pub struct Panes {
@@ -53,20 +54,20 @@ pub fn pane(title: &str, focused: bool) -> Block<'static> {
         ))
 }
 
-pub fn draw(f: &mut Frame, app: &mut App) {
+pub fn draw(f: &mut Frame, app: &App, view: &mut View) {
     let area = f.area();
     let with_path = area.height >= 8;
     let footer = if with_path { 2 } else { 1 };
     let rows = Layout::vertical([Constraint::Min(3), Constraint::Length(footer)]).split(area);
     let panes = split_panes(rows[0], sidebar_width(app));
 
-    app.sidebar_rect = None;
+    view.sidebar = None;
     if let Some(rect) = panes.sidebar {
         let block = pane("groups", app.focus == Focus::Groups);
         let inner = block.inner(rect);
-        app.sidebar_rect = Some(inner);
+        view.sidebar = Some(inner);
         f.render_widget(block, rect);
-        let lines = sidebar_lines(app, inner);
+        let lines = sidebar_lines(app, view, inner);
         f.render_widget(Paragraph::new(lines), inner);
     }
 
@@ -79,19 +80,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     f.render_widget(block, panes.list);
 
     let height = inner.height as usize;
-    app.view_height = height.max(1);
-    app.list_rect = inner;
+    view.height = height.max(1);
+    view.list = inner;
     if height > 0 {
-        if app.cursor < app.offset {
-            app.offset = app.cursor;
-        }
-        if app.cursor >= app.offset + height {
-            app.offset = app.cursor + 1 - height;
-        }
+        view.follow(app.cursor, height);
         let lines: Vec<Line> = if app.visible.is_empty() {
             vec![Line::styled("  no matches", Style::new().fg(C_MUTED))]
         } else {
-            (app.offset..(app.offset + height).min(app.visible.len()))
+            (view.offset..(view.offset + height).min(app.visible.len()))
                 .map(|i| entry_line(app, app.visible[i], i == app.cursor))
                 .collect()
         };
@@ -147,7 +143,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 mod tests {
     use super::*;
     use crate::app::Mode;
-    use crate::source::{split_tail, Entry};
+    use crate::model::{split_tail, Entry};
     use ratatui::backend::TestBackend;
 
     fn app_with(groups: Vec<&str>, paths: Vec<(usize, &str)>) -> App {
@@ -168,9 +164,10 @@ mod tests {
         )
     }
 
-    fn render(app: &mut App, w: u16, h: u16) -> Buffer {
+    fn render(app: &App, w: u16, h: u16) -> Buffer {
+        let mut view = View::new();
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
-        term.draw(|f| draw(f, app)).unwrap();
+        term.draw(|f| draw(f, app, &mut view)).unwrap();
         term.backend().buffer().clone()
     }
 
@@ -230,24 +227,24 @@ mod tests {
     #[test]
     fn 読めない色の組み合わせが無い() {
         let mut a = sample();
-        assert_no_invisible_cells(&render(&mut a, 110, 14));
+        assert_no_invisible_cells(&render(&a, 110, 14));
 
         a.focus = Focus::Groups;
-        assert_no_invisible_cells(&render(&mut a, 110, 14));
+        assert_no_invisible_cells(&render(&a, 110, 14));
 
         a.focus = Focus::List;
         a.query = "shi".into();
         a.mode = Mode::Search;
         a.rebuild(true);
-        assert_no_invisible_cells(&render(&mut a, 110, 14));
+        assert_no_invisible_cells(&render(&a, 110, 14));
 
-        assert_no_invisible_cells(&render(&mut a, 50, 10));
+        assert_no_invisible_cells(&render(&a, 50, 10));
     }
 
     #[test]
     fn 選択行は背景で分かる() {
-        let mut a = sample();
-        let buf = render(&mut a, 110, 14);
+        let a = sample();
+        let buf = render(&a, 110, 14);
 
         let cell = &buf[(15, 1)];
         assert_eq!(cell.bg, C_SEL_BG, "選択行に背景色が乗っていない");
@@ -261,7 +258,7 @@ mod tests {
         let mut a = sample();
         a.query = "grass".into();
         a.rebuild(true);
-        let buf = render(&mut a, 110, 14);
+        let buf = render(&a, 110, 14);
 
         let hit = (0..buf.area.width)
             .flat_map(|x| (0..buf.area.height).map(move |y| (x, y)))
@@ -272,15 +269,15 @@ mod tests {
 
     #[test]
     fn 端末幅でペインが増減する() {
-        let mut a = sample();
+        let a = sample();
 
-        let wide = text(&render(&mut a, 110, 14));
+        let wide = text(&render(&a, 110, 14));
         assert!(wide.contains("groups") && wide.contains("dotfiles"));
 
-        let mid = text(&render(&mut a, 80, 14));
+        let mid = text(&render(&a, 80, 14));
         assert!(mid.contains("groups"), "80 桁ではサイドバーが出る");
 
-        let narrow = text(&render(&mut a, 50, 14));
+        let narrow = text(&render(&a, 50, 14));
         assert!(!narrow.contains("groups"), "50 桁ではサイドバーを落とす");
         assert!(narrow.contains("dotfiles"), "一覧は残る");
     }
@@ -290,7 +287,7 @@ mod tests {
         let mut a = sample();
         a.query = "marutope".into();
         a.rebuild(true);
-        let out = text(&render(&mut a, 110, 14));
+        let out = text(&render(&a, 110, 14));
 
         assert!(out.contains("ghq"), "一致 0 でもグループは消さない");
         assert!(out.contains("work"));
@@ -313,20 +310,20 @@ mod tests {
         let mut a = app_with(groups, paths);
         a.focus = Focus::Groups;
 
-        let top = text(&render(&mut a, 110, 8));
+        let top = text(&render(&a, 110, 8));
         assert!(top.contains("All"));
         assert!(!top.contains("g7"), "縦に収まらない分は最初は見えない");
 
         a.jump(true); // 末尾のグループへ
-        let bottom = text(&render(&mut a, 110, 8));
+        let bottom = text(&render(&a, 110, 8));
         assert!(bottom.contains("g7"), "末尾のグループまで辿り着けない");
         assert!(!bottom.contains("All"), "上端はスクロールで押し出される");
     }
 
     #[test]
     fn 選んでいるパスが下端に出る() {
-        let mut a = sample();
-        let out = text(&render(&mut a, 110, 14));
+        let a = sample();
+        let out = text(&render(&a, 110, 14));
         assert!(out.contains("dotfiles"));
         assert!(
             out.lines().rev().take(3).any(|l| l.contains("/shsw228/")),

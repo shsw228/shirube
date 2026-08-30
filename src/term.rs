@@ -14,6 +14,7 @@ use ratatui::{
 
 use crate::app::{Action, App, Mode};
 use crate::ui::draw;
+use crate::view::View;
 
 pub fn inherited_tty(readable: bool) -> Option<i32> {
     for fd in [libc::STDERR_FILENO, libc::STDOUT_FILENO, libc::STDIN_FILENO] {
@@ -67,13 +68,14 @@ pub fn run(app: &mut App) -> io::Result<Option<String>> {
     execute!(out, EnterAlternateScreen, EnableMouseCapture)?;
     let mut term = Terminal::new(CrosstermBackend::new(out))?;
 
+    let mut view = View::new();
     let result = loop {
-        term.draw(|f| draw(f, app))?;
+        term.draw(|f| draw(f, app, &mut view))?;
 
         let key = match event::read()? {
             Event::Key(k) if k.kind == KeyEventKind::Press => k,
             Event::Mouse(m) => {
-                if app.on_mouse(m.kind, m.column, m.row) == Action::Choose {
+                if app.on_mouse(&view, m.kind, m.column, m.row) == Action::Choose {
                     if let Some(p) = app.selected_path() {
                         break Some(p.to_string());
                     }
@@ -89,8 +91,8 @@ pub fn run(app: &mut App) -> io::Result<Option<String>> {
         }
 
         let action = match app.mode {
-            Mode::Normal => app.on_normal_key(key.code, ctrl),
-            Mode::Search => app.on_search_key(key.code, ctrl),
+            Mode::Normal => app.on_normal_key(&mut view, key.code, ctrl),
+            Mode::Search => app.on_search_key(&mut view, key.code, ctrl),
         };
         match action {
             Action::Quit => break None,

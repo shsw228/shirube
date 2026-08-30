@@ -2,48 +2,11 @@ use std::{
     collections::HashSet,
     fs, io,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 use crate::config::{expand_home, Config};
-use crate::history::ranked_paths;
-
-pub struct Entry {
-    pub path: String,
-    pub group: usize,
-    pub owner: String,
-    pub repo: String,
-}
-
-/// パス末尾 2 階層を owner/repo として切り出す。ghq の表示に合わせている。
-pub fn split_tail(path: &str) -> (String, String) {
-    let parts: Vec<&str> = path.trim_end_matches('/').split('/').collect();
-    let repo = parts.last().copied().unwrap_or(path).to_string();
-    let owner = if parts.len() >= 2 {
-        parts[parts.len() - 2].to_string()
-    } else {
-        repo.clone()
-    };
-    (owner, repo)
-}
-
-pub fn run_command(cmd: &[String]) -> Vec<String> {
-    let Some((program, args)) = cmd.split_first() else {
-        return Vec::new();
-    };
-    let Ok(out) = Command::new(program).args(args).output() else {
-        return Vec::new();
-    };
-    if !out.status.success() {
-        return Vec::new();
-    }
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_string)
-        .collect()
-}
+use crate::exec::run_command;
+use crate::model::{split_tail, Entry};
 
 /// ディレクトリを走査する。DirEntry::file_type() はリンクを辿らないので、
 /// それで判定するとシンボリックリンクのディレクトリを丸ごと取りこぼす。
@@ -116,7 +79,6 @@ pub fn collect(config: &Config, piped: Vec<String>) -> (Vec<String>, Vec<Entry>)
             }
         };
 
-    let ranks = ranked_paths(&config.history);
     add(&mut groups, &mut entries, "stdin", piped);
 
     for spec in &config.source {
@@ -136,9 +98,6 @@ pub fn collect(config: &Config, piped: Vec<String>) -> (Vec<String>, Vec<Entry>)
             (None, None) => Vec::new(),
         };
         paths.dedup();
-        if !ranks.is_empty() {
-            paths.sort_by_key(|p| ranks.get(p).copied().unwrap_or(usize::MAX));
-        }
         add(&mut groups, &mut entries, &spec.label, paths);
     }
 
@@ -239,47 +198,5 @@ mod tests {
 
         assert!(found.len() < 10, "循環を辿り続けている: {found:?}");
         let _ = fs::remove_dir_all(&base);
-    }
-
-    #[test]
-    fn 順位コマンドの並びが一覧に反映される() {
-        let c: Config = toml::from_str(
-            r#"
-            [[source]]
-            label = "s"
-            command = ["printf", "/tmp/a\n/tmp/b\n/tmp/c\n"]
-
-            [history]
-            rank = ["printf", "/tmp/c\n/tmp/a\n"]
-            "#,
-        )
-        .unwrap();
-        let (_, entries) = collect(&c, Vec::new());
-        assert_eq!(
-            entries.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
-            ["/tmp/c", "/tmp/a", "/tmp/b"],
-            "順位付きが前、知らないものは元の並びで後ろ"
-        );
-    }
-
-    #[test]
-    fn 履歴を切ると並べ替えない() {
-        let c: Config = toml::from_str(
-            r#"
-            [[source]]
-            label = "s"
-            command = ["printf", "/tmp/a\n/tmp/b\n/tmp/c\n"]
-
-            [history]
-            enabled = false
-            rank = ["printf", "/tmp/c\n"]
-            "#,
-        )
-        .unwrap();
-        let (_, entries) = collect(&c, Vec::new());
-        assert_eq!(
-            entries.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
-            ["/tmp/a", "/tmp/b", "/tmp/c"]
-        );
     }
 }
