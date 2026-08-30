@@ -1,10 +1,20 @@
 name: CI
 
+# ドキュメントだけの変更でビルドを回さない。ワークフロー自身の変更は対象に残す。
+# GitHub Actions は YAML のアンカーを解釈しないので、同じ列挙を 2 度書く。
 on:
   push:
     branches: ["*"]
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
 
 jobs:
   test:
