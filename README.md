@@ -26,10 +26,11 @@ road goes.
 - **Groups as a pane, not headings.** Filtering never costs you the sense of
   where you are: every group stays on the left with its own hit count, even
   when nothing in it matches.
-- **Substring matching, not fuzzy.** Searching `work` will not return
-  `shsw228/PhotoScrubberKit` by scavenging a `w` from the owner and an `o`, `r`
-  and `K` from the repository name. Matching is smart-case over what is on
-  screen, and every hit is highlighted.
+- **Substring matching by default, fuzzy on demand.** Searching `work` will not
+  return `shsw228/PhotoScrubberKit` by scavenging a `w` from the owner and an
+  `o`, `r` and `K` from the repository name. Press `f` when you do want
+  subsequence matching — `psk` then finds `PhotoScrubberKit`. Either way the
+  match is smart-case, confined to one column, and every hit is highlighted.
 - **Any source.** A command that prints paths, a directory to walk, or paths
   piped on stdin. `ghq` is the default, not a requirement.
 - **Any history backend.** Picks are ranked recent-first. Keep the built-in
@@ -169,6 +170,23 @@ Paths piped on stdin become a `stdin` group ahead of the configured sources:
 fd --type d --max-depth 2 . ~/src | shirube
 ```
 
+### Matching
+
+Substring matching is the default. Set the mode you want to start in:
+
+```toml
+[match]
+mode = "fuzzy"   # "substring" (default) | "fuzzy"
+```
+
+`f` toggles between the two while running, and the status line shows `[fuzzy]`
+whenever you are not on the default.
+
+Both modes match one column at a time — a query is tested against the group, the
+owner and the name separately, never against the three joined together. That is
+what keeps every match explainable: whatever matched is highlighted on screen,
+so fuzzy mode never leaves you wondering why a row is in the list.
+
 ### History
 
 Picks are ranked the way zoxide ranks: recent beats frequent. With no
@@ -240,6 +258,7 @@ The interface is modal. It opens in normal mode with the list focused.
 | `H` `M` `L` | Top / middle / bottom of the screen |
 | `zz` `zt` `zb` | Put the cursor line at the centre / top / bottom |
 | `{` `}` | Previous / next group boundary |
+| `f` | Toggle substring / fuzzy matching |
 | `/` | Enter search mode |
 | `Enter` | Choose, or enter the list from the groups pane |
 | `q` | Quit |

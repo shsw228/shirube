@@ -2,12 +2,23 @@ use std::{env, fs, path::PathBuf};
 
 use serde::Deserialize;
 
+use crate::matcher::MatchMode;
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub source: Vec<SourceSpec>,
     #[serde(default)]
     pub history: History,
+    #[serde(default, rename = "match")]
+    pub matching: Matching,
+}
+
+/// 既定の一致のとり方。実行中は f で切り替えられる。
+#[derive(Debug, Default, Deserialize)]
+pub struct Matching {
+    #[serde(default)]
+    pub mode: MatchMode,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,6 +73,7 @@ impl Default for Config {
                 depth: 1,
             }],
             history: History::default(),
+            matching: Matching::default(),
         }
     }
 }
@@ -158,6 +170,13 @@ mod tests {
             c.history.rank.as_deref(),
             Some(["zoxide".to_string(), "query".into(), "--list".into()].as_slice())
         );
+    }
+
+    #[test]
+    fn 一致のとり方を設定で選べる() {
+        let c: Config = toml::from_str("[match]\nmode = \"fuzzy\"").unwrap();
+        assert_eq!(c.matching.mode, MatchMode::Fuzzy);
+        assert_eq!(Config::default().matching.mode, MatchMode::Substring);
     }
 
     #[test]
