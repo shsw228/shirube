@@ -118,7 +118,7 @@ pub fn collect(
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
-    use crate::config::History;
+    use crate::config::{History, Matching};
 
     #[test]
     fn コマンドの出力がグループになる() {
@@ -146,6 +146,7 @@ mod tests {
                 enabled: false,
                 ..Default::default()
             },
+            matching: Matching::default(),
         };
         let (groups, entries) =
             collect(&c, vec!["/tmp/x".into(), "/tmp/y".into()], &HashMap::new());
@@ -186,6 +187,7 @@ mod tests {
         let c = Config {
             source: Vec::new(),
             history: History::default(),
+            matching: Matching::default(),
         };
         let piped = vec!["/tmp/a".to_string(), "/tmp/b".into(), "/tmp/c".into()];
         let (_, entries) = collect(&c, piped, &ranks(&["/tmp/c", "/tmp/b"]));

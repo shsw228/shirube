@@ -4,7 +4,7 @@ use ratatui::prelude::*;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Mode};
-use crate::matcher::merged_ranges;
+use crate::matcher::{merged_ranges, MatchMode};
 use crate::ui::theme::*;
 use crate::ui::view::View;
 
@@ -100,7 +100,7 @@ pub fn entry_line(app: &App, idx: usize, selected: bool) -> Line<'static> {
 
     spans.extend(highlight(
         &e.owner,
-        &merged_ranges(&e.owner, &app.tokens, app.ci),
+        &merged_ranges(&e.owner, &app.tokens, app.match_mode, app.ci),
         owner_style,
         hit,
     ));
@@ -110,7 +110,7 @@ pub fn entry_line(app: &App, idx: usize, selected: bool) -> Line<'static> {
     ));
     spans.extend(highlight(
         &e.repo,
-        &merged_ranges(&e.repo, &app.tokens, app.ci),
+        &merged_ranges(&e.repo, &app.tokens, app.match_mode, app.ci),
         repo_style,
         hit,
     ));
@@ -186,6 +186,15 @@ pub fn pending_text(app: &App) -> String {
     out
 }
 
+/// 既定でない一致のとり方をしているときだけ添える。
+fn mode_suffix(app: &App) -> String {
+    if app.match_mode == MatchMode::default() {
+        String::new()
+    } else {
+        format!("   [{}]", app.match_mode.label())
+    }
+}
+
 pub fn status_line(app: &App) -> Line<'static> {
     let hint = Style::new().fg(C_MUTED);
     match app.mode {
@@ -210,11 +219,15 @@ pub fn status_line(app: &App) -> Line<'static> {
                 "   j/k move   h/l pane   / search   esc clear   enter go   q quit",
                 hint,
             ),
+            Span::styled(mode_suffix(app), Style::new().fg(C_KEY)),
         ]),
-        Mode::Normal => Line::styled(
-            " j/k move   h/l pane   tab switch   / search   enter go   q quit",
-            hint,
-        ),
+        Mode::Normal => Line::from(vec![
+            Span::styled(
+                " j/k move   h/l pane   tab switch   / search   enter go   q quit",
+                hint,
+            ),
+            Span::styled(mode_suffix(app), Style::new().fg(C_KEY)),
+        ]),
     }
 }
 

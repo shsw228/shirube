@@ -44,7 +44,8 @@ Keys (vim motions, with counts such as 5j and 12G):
   Ctrl-d Ctrl-u     half page        H M L     top / middle / bottom
   Ctrl-f Ctrl-b     page             zz zt zb  reposition
   Ctrl-e Ctrl-y     scroll view      /         search
-  Enter             choose           q         quit
+  f                 substring/fuzzy  Enter     choose
+                                     q         quit
 
 The mouse works too: the wheel scrolls the pane under the pointer, a click
 selects a row, and clicking the selected row again chooses it.
@@ -105,6 +106,7 @@ fn main() {
     }
 
     let mut app = App::new(groups, entries);
+    app.match_mode = config.matching.mode;
     if !query.is_empty() {
         app.query = query;
         app.rebuild(true);

@@ -79,6 +79,10 @@ impl App {
                 Focus::List => return Action::Choose,
             },
             KeyCode::Char('/') => self.mode = Mode::Search,
+            KeyCode::Char('f') if !ctrl => {
+                self.toggle_match_mode();
+                view.reset_scroll();
+            }
 
             KeyCode::Char('j') | KeyCode::Down => self.step(count as isize),
             KeyCode::Char('k') | KeyCode::Up => self.step(-(count as isize)),

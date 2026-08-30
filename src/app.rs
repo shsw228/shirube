@@ -2,7 +2,7 @@ use unicode_width::UnicodeWidthStr;
 
 pub mod keys;
 
-use crate::matcher::find_all;
+use crate::matcher::{find, MatchMode};
 use crate::model::Entry;
 use crate::ui::view::View;
 
@@ -31,6 +31,7 @@ pub struct App {
     pub query: String,
     pub tokens: Vec<String>,
     pub ci: bool,
+    pub match_mode: MatchMode,
     pub mode: Mode,
     pub focus: Focus,
     pub scope: usize,
@@ -53,6 +54,7 @@ impl App {
             query: String::new(),
             tokens: Vec::new(),
             ci: true,
+            match_mode: MatchMode::default(),
             mode: Mode::Normal,
             focus: Focus::List,
             scope: 0,
@@ -71,9 +73,8 @@ impl App {
 
     pub fn matches(&self, e: &Entry) -> bool {
         self.tokens.iter().all(|t| {
-            !find_all(&e.repo, t, self.ci).is_empty()
-                || !find_all(&e.owner, t, self.ci).is_empty()
-                || !find_all(&self.groups[e.group], t, self.ci).is_empty()
+            let hit = |s: &str| !find(s, t, self.match_mode, self.ci).is_empty();
+            hit(&e.repo) || hit(&e.owner) || hit(&self.groups[e.group])
         })
     }
 
@@ -110,6 +111,11 @@ impl App {
             self.cursor = 0;
         }
         self.cursor = self.cursor.min(self.visible.len().saturating_sub(1));
+    }
+
+    pub fn toggle_match_mode(&mut self) {
+        self.match_mode = self.match_mode.toggled();
+        self.rebuild(true);
     }
 
     pub fn total(&self) -> usize {
@@ -293,6 +299,32 @@ mod tests {
     #[test]
     fn 散らばった文字ではマッチしない() {
         let mut a = app();
+        a.query = "work".into();
+        a.rebuild(true);
+        assert_eq!(shown(&a), vec!["marutope", "受注A"]);
+    }
+
+    #[test]
+    fn fuzzyに切り替えると頭文字で引ける() {
+        let mut a = app();
+        a.query = "psk".into();
+        a.rebuild(true);
+        assert!(shown(&a).is_empty(), "substring では拾わない");
+
+        a.toggle_match_mode();
+        assert_eq!(a.match_mode, MatchMode::Fuzzy);
+        assert_eq!(shown(&a), vec!["PhotoScrubberKit"]);
+
+        a.toggle_match_mode();
+        assert!(shown(&a).is_empty(), "戻せる");
+    }
+
+    /// fuzzy でも列を跨いでは拾わない。跨ぐと「なぜ一致したか」を画面に出せず、
+    /// fzf で work が PhotoScrubberKit を引いていたのと同じ状態になる。
+    #[test]
+    fn fuzzyでも列を跨いでは拾わない() {
+        let mut a = app();
+        a.match_mode = MatchMode::Fuzzy;
         a.query = "work".into();
         a.rebuild(true);
         assert_eq!(shown(&a), vec!["marutope", "受注A"]);
