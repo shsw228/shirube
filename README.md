@@ -191,7 +191,11 @@ the recording, and adding `record` would count the same jump twice:
 rank = ["zoxide", "query", "--list"]
 ```
 
-If it records nothing on its own, that is what `record` is for:
+Setting `rank` alone also stops shirube writing its own ledger: the ledger only
+exists to feed the built-in ranker, so once ranking is delegated nothing would
+ever read it.
+
+If your backend records nothing on its own, that is what `record` is for:
 
 ```toml
 [history]
@@ -291,7 +295,7 @@ Issues and pull requests are welcome.
 ```sh
 cargo test           # unit and rendering tests
 cargo fmt --all --check
-cargo clippy --all -- -D warnings
+cargo clippy --all-targets -- -D warnings
 ```
 
 CI runs the same three on macOS and Linux.

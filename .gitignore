@@ -1,1 +1,6 @@
 /target
+
+# npx skills add で入れた第三者スキル。リポジトリには含めない。
+/.agents/
+/.claude/
+/skills-lock.json
