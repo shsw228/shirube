@@ -295,7 +295,7 @@ Issues and pull requests are welcome.
 ```sh
 cargo test           # unit and rendering tests
 cargo fmt --all --check
-cargo clippy --all -- -D warnings
+cargo clippy --all-targets -- -D warnings
 ```
 
 CI runs the same three on macOS and Linux.
